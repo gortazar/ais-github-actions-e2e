@@ -22,11 +22,14 @@ public class AnuncioTest {
 	@LocalServerPort
     int port;
 
+	static String host;
+
 	WebDriver driver;
 	
 	@BeforeAll
 	public static void setupClass() {
 		WebDriverManager.chromedriver().setup();
+		host = System.getProperty("host", "localhost");
 	}
 	
 	@BeforeEach
@@ -45,7 +48,7 @@ public class AnuncioTest {
 	
 	@Test
 	public void createAnuncio() throws InterruptedException {
-		driver.get("http://localhost:"+this.port+"/");
+		driver.get("http://" + host + ":" + this.port + "/");
 		
 		driver.findElement(By.linkText("Nuevo anuncio")).click();
 		

@@ -1,23 +1,77 @@
-name: example
+name: push
 
 on: 
   push:
+    branches:
+      - master
+  
+  workflow_dispatch:
 
 jobs:
   build:
 
-    runs-on: ${{ matrix.os }}
-    
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-20.04, windows-2019, macos-11.0]
-
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
     - name: Set up JDK 11
       uses: actions/setup-java@v1
       with:
-        java-version: 11
+        java-version: '11'
     - name: Build native with Maven
-      run: mvn -B package 
+      run: mvn -B package
+    - name: Upload target folder
+      uses: actions/upload-artifact@v1
+      with:
+        name: target
+        path: target
+
+  publish_in_heroku_registry:
+    runs-on: ubuntu-20.04
+    needs: [build]
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      HEROKU_APP: ${{ secrets.HEROKU_APP }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Download target folder published by build job
+        uses: actions/download-artifact@v1
+        with:
+          name: target
+      - name: Build Docker image
+        run: docker build -t items .
+      - name: Install Heroku commandline client
+        run: curl https://cli-assets.heroku.com/install-ubuntu.sh | sh
+      - name: Change image name to point Heroku registry
+        run: docker tag items registry.heroku.com/$HEROKU_APP/web
+      - name: Login to Heroku container resitry
+        run: heroku container:login
+      - name: Publish in Heroku registry
+        run: docker push registry.heroku.com/$HEROKU_APP/web
+
+  deploy_in_heroku:
+    name: Deploy to Heroku
+    runs-on: ubuntu-20.04
+    needs: [publish_in_heroku_registry]
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      HEROKU_APP: ${{ secrets.HEROKU_APP }}
+    steps:
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install-ubuntu.sh | sh
+      - name: Login to Heroku
+        run: heroku container:login
+      - name: Deploy app
+        run: heroku container:release web
+  
+  smoke_test:
+    name: Smoke test
+    runs-on: ubuntu-20.04
+    needs: [deploy_in_heroku]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up JDK 11
+        uses: actions/setup-java@v1
+        with:
+          java-version: '11'
+      - name: Build native with Maven
+        run: mvn -B package -Dhost=$HEROKU_APP.herokuapp.com
